@@ -87,7 +87,14 @@ class ChromeGuardService : AccessibilityService() {
         const val MENSAGEM = "Respire fundo. Esse dinheiro é para o seu futuro. Não jogue hoje! ❤️"
         private val IGNORAR = listOf("com.android.systemui", "inputmethod", "keyboard", "honeyboard")
         private val REGEX_HOST = Regex("^([a-z0-9-]+\\.)+[a-z]{2,}$")
+
+        // Diagnóstico mostrado na tela inicial do Pausa
+        @Volatile var conectado = false
+        @Volatile var eventosChrome = 0
+        @Volatile var diag = "nenhuma leitura ainda"
     }
+
+    private var amostra = ""
 
     private lateinit var wm: WindowManager
     private var overlay: View? = null
@@ -97,6 +104,8 @@ class ChromeGuardService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        conectado = true
+        diag = "serviço conectado, aguardando o Chrome"
     }
 
     override fun onAccessibilityEvent(ev: AccessibilityEvent?) {
@@ -107,24 +116,45 @@ class ChromeGuardService : AccessibilityService() {
             if (ev.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) esconder()
             return
         }
+        eventosChrome++
         verificarChrome()
     }
 
     private fun verificarChrome() {
         if (overlay != null) return
-        val raiz = rootInActiveWindow ?: return
-        if (raiz.packageName?.toString() != CHROME) return
-        val host = lerHost(raiz) ?: return
-        if (Confiaveis.confiavel(this, host)) return
+        val raiz = rootInActiveWindow
+        if (raiz == null) {
+            diag = "Chrome aberto, mas o Android não deu acesso à tela (root nulo)"
+            return
+        }
+        if (raiz.packageName?.toString() != CHROME) {
+            diag = "Janela ativa não é o Chrome: " + raiz.packageName
+            return
+        }
+        val host = lerHost(raiz)
+        if (host == null) {
+            diag = "Chrome aberto, mas não consegui ler o endereço. Vi: " + amostra
+            return
+        }
+        if (Confiaveis.confiavel(this, host)) {
+            diag = "Li: $host (confiável, deixei passar)"
+            return
+        }
         val dom = Confiaveis.dominio(host)
-        if (System.currentTimeMillis() < (liberados[dom] ?: 0L)) return
+        if (System.currentTimeMillis() < (liberados[dom] ?: 0L)) {
+            diag = "Li: $host (liberado temporariamente)"
+            return
+        }
+        diag = "Li: $host (site novo, bloqueando)"
         mostrar(host)
     }
 
     private fun lerHost(raiz: AccessibilityNodeInfo): String? {
+        val vistosTxt = mutableListOf<String>()
         val porId = raiz.findAccessibilityNodeInfosByViewId("com.android.chrome:id/url_bar")
         for (n in porId) {
             extrairHost(n.text?.toString())?.let { return it }
+            vistosTxt.add("url_bar='" + (n.text?.toString() ?: "").take(30) + "'")
         }
         // Alternativa: outros campos de endereço da interface do Chrome
         val fila = ArrayDeque<AccessibilityNodeInfo>()
@@ -134,15 +164,20 @@ class ChromeGuardService : AccessibilityService() {
             val n = fila.removeFirst()
             vistos++
             val id = n.viewIdResourceName
-            if (id != null && id.startsWith("com.android.chrome:id/") &&
-                id.contains("url", ignoreCase = true)
-            ) {
-                extrairHost(n.text?.toString())?.let { return it }
+            val txt = n.text?.toString()
+            if (id != null && id.startsWith("com.android.chrome:id/")) {
+                if (id.contains("url", ignoreCase = true)) {
+                    extrairHost(txt)?.let { return it }
+                }
+                if (!txt.isNullOrBlank() && vistosTxt.size < 8) {
+                    vistosTxt.add(id.substringAfter(":id/") + "='" + txt.take(30) + "'")
+                }
             }
             for (i in 0 until n.childCount) {
                 n.getChild(i)?.let { fila.add(it) }
             }
         }
+        amostra = if (vistosTxt.isEmpty()) "nenhum campo do Chrome com texto ($vistos nós)" else vistosTxt.joinToString(" | ")
         return null
     }
 
@@ -272,6 +307,7 @@ class ChromeGuardService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
+        conectado = false
         esconder()
         return super.onUnbind(intent)
     }
