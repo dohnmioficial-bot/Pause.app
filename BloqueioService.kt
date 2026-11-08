@@ -23,9 +23,10 @@ class BloqueioService : Service() {
     companion object {
         // Troque pelos pacotes reais das bets que seu amigo usa.
         // Para achar: na página do app na Play Store, o pacote é o valor de "?id=" na URL.
-        val BETS = setOf(
-            "com.exemplo.bet1",
-            "com.exemplo.bet2"
+        
+         val BETS = setOf(
+            "org.chromium.webapk.a866c71ae521ed514_v2"
+        )
         )
         const val ESPERA_MS = 20 * 60_000L      // espera antes de poder liberar
         const val LIBERACAO_MS = 10 * 60_000L   // tempo liberado depois da espera
