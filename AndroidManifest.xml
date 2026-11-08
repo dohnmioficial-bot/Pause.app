@@ -32,5 +32,18 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Detectar apps de apostas em primeiro plano e exibir tela de espera para autocontrole" />
         </service>
+
+        <service
+            android:name=".ChromeGuardService"
+            android:exported="true"
+            android:label="Pausa — proteção de sites"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
     </application>
 </manifest>
